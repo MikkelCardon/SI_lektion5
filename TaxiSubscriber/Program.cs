@@ -110,7 +110,7 @@ namespace TaxiSubscriber
         {
             if (input is not null)
             {
-                Console.WriteLine($"Bruger input {input}");
+                Console.WriteLine($"Forsøger at slette id: {input}");
                 _orders.RemoveAll(order => order.Id == input);
                 PrintOrders();
             }

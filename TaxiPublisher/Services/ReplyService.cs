@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TaxiPublisher.Db;
@@ -10,13 +11,14 @@ public class ReplyService : BackgroundService
 {
     private IChannel _channel;
     private readonly string _queueName;
-    
-    private readonly OrdersContext _ordersContext;
 
-    public ReplyService(IChannel ichannel, OrdersContext ordersContext)
+    private readonly IServiceScopeFactory _scopeFactory;
+
+    public ReplyService(IChannel ichannel, IServiceScopeFactory scopeFactory)
     {
         _channel = ichannel;
         _queueName = "request-queue";
+        _scopeFactory = scopeFactory;
     }
 
 
@@ -28,6 +30,9 @@ public class ReplyService : BackgroundService
 
         consumer.ReceivedAsync += async (model, ea) =>
         {
+            using var scope = _scopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<OrdersContext>();
+            
             Console.WriteLine($"Received Request: {ea.BasicProperties.CorrelationId}");
 
             var replyMessage = $"This is your reply: {ea.BasicProperties.CorrelationId}";
@@ -37,9 +42,10 @@ public class ReplyService : BackgroundService
             };
             var eabody = ea.Body.ToArray();
             var message = Encoding.UTF8.GetString(eabody);
-            await DeleteOrderAsync(message);
             
-            var body = Encoding.UTF8.GetBytes(replyMessage);
+            var deleted = await DeleteOrderAsync(context, message);
+            
+            var body = eabody;
 
             if (string.IsNullOrEmpty(ea.BasicProperties.ReplyTo))
             {
@@ -47,33 +53,60 @@ public class ReplyService : BackgroundService
                 return;
             }
 
-            await _channel.BasicPublishAsync(
-                exchange: string.Empty,
-                routingKey: ea.BasicProperties.ReplyTo,
-                mandatory: true,
-                basicProperties: replyProperties,
-                body: body
-            );
+            if (deleted)
+            {
+                await _channel.BasicPublishAsync(
+                    exchange: string.Empty,
+                    routingKey: ea.BasicProperties.ReplyTo,
+                    mandatory: true,
+                    basicProperties: replyProperties,
+                    body: body
+                );
+                Console.WriteLine($"Replied to: {ea.BasicProperties.ReplyTo}");
+            }
+            else
+            {
+                Console.WriteLine("Was not deleted.");
+            }
+            
         };
 
         await _channel.BasicConsumeAsync(queue: "request-queue", autoAck: true, consumer: consumer);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(1000, stoppingToken);
+        }
     }
     
-    public async Task<bool> DeleteOrderAsync(string orderIdString)
+    public async Task<bool> DeleteOrderAsync(OrdersContext ordersContext, string orderId)
     {
-        int orderId = Int32.Parse(orderIdString);
-        // 1. Find the order by ID
-        var order = await _ordersContext.Orders.FindAsync(orderId);
-
-        // 2. If found, remove it
-        if (order != null)
+        Console.WriteLine("Updating db...");
+        try
         {
-            _ordersContext.Orders.Remove(order);
-            await _ordersContext.SaveChangesAsync();
-            return true;
-        }
+            // 1. Find the order by ID
+            var order = await ordersContext.Orders.FindAsync(orderId);
 
-        // 3. Return false if not found
-        return false;
+            // 2. If found, remove it
+            if (order != null)
+            {
+                ordersContext.Orders.Remove(order);
+                await ordersContext.SaveChangesAsync();
+
+                Console.WriteLine(
+                    $"Deleted order {orderId}. Remaining orders: {await ordersContext.Orders.CountAsync()}");
+
+                return true;
+            }
+
+            // 3. Return false if not found
+            Console.WriteLine("Nothing found");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            return false;
+        }
     }
 }
