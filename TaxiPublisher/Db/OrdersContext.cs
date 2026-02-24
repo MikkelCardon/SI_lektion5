@@ -10,5 +10,7 @@ namespace TaxiPublisher.Db
             
         }
         public DbSet<Order> Orders { get; set; }
+        
+        
     }
 }

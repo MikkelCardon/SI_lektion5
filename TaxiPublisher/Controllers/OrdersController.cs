@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using TaxiPublisher.Db;
 using TaxiPublisher.Model;
+using TaxiPublisher.Services;
 
 namespace TaxiPublisher.Controllers
 {

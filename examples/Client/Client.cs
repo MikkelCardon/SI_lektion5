@@ -28,7 +28,9 @@ namespace Client
             };
 
             await channel.BasicConsumeAsync(queue: replyQueue.QueueName, autoAck: true, consumer: consumer);
-
+            //Opsætter queue, event ved consumed og starter comsumeren.
+            
+            
             var properties = new BasicProperties()
             {
                 ReplyTo = replyQueue.QueueName,
@@ -40,6 +42,7 @@ namespace Client
 
             Console.WriteLine($"Sending Request: {properties.CorrelationId}");
 
+            //Laver et svar ud til default exchange og routingKey 'request-queue', og sender properties og body med.
             await channel.BasicPublishAsync(string.Empty, "request-queue", true, properties, body);
             Console.WriteLine(" Press [enter] to exit.");
             Console.ReadKey();

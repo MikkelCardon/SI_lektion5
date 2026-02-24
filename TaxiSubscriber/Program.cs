@@ -38,17 +38,59 @@ namespace TaxiSubscriber
             };
 
             await channel.BasicConsumeAsync(queueName, autoAck: true, consumer: consumer);
-            var resultTask = GetUserInput();
+            
+            
             while (true)
             {
-                if (resultTask.IsCompleted)
-                {
-
-                    resultTask = GetUserInput();
-                }
+                string? input = Console.ReadLine();
+                await RequestReply(channel, input);
+                
                 Thread.Sleep(100);
             }
 
+        }
+
+        private static async Task RequestReply(IChannel channel, string input)
+        {
+            var replyQueue = await channel.QueueDeclareAsync();
+            
+            await Request(channel, input, replyQueue);
+            await Reply(channel, input, replyQueue);
+        }
+
+        private static async Task Reply(IChannel channel, string input, QueueDeclareOk replyQueue)
+        {
+            var consumer = new AsyncEventingBasicConsumer(channel);
+
+            consumer.ReceivedAsync += (model, ea) =>
+            {
+                var body = ea.Body.ToArray();
+                var message = Encoding.UTF8.GetString(body);
+                Console.WriteLine($"Reply Recieved: {message}");
+                
+                RemoveOrder(message);
+
+                return Task.CompletedTask;
+            };
+
+            await channel.BasicConsumeAsync(queue: replyQueue.QueueName, autoAck: true, consumer: consumer);
+        }
+
+        private static async Task Request(IChannel channel, string input, QueueDeclareOk replyQueue)
+        {
+            await channel.QueueDeclareAsync("request-queue", exclusive: false);
+            
+            var properties = new BasicProperties()
+            {
+                ReplyTo = replyQueue.QueueName,
+                CorrelationId = Guid.NewGuid().ToString()
+            };
+            
+            var message = input;
+            var body = Encoding.UTF8.GetBytes(message);
+            
+            Console.WriteLine($"Sending Request: {properties.CorrelationId} - id: {message}");
+            await channel.BasicPublishAsync(string.Empty, "request-queue", true, properties, body);
         }
 
         private static void PrintOrders()
@@ -64,18 +106,14 @@ namespace TaxiSubscriber
             Console.WriteLine("Vælg en order ved at indtaste id'et");
         }
 
-        private static Task GetUserInput()
+        private static void RemoveOrder(string input)
         {
-            return Task.Run(() =>
+            if (input is not null)
             {
-                string? input = Console.ReadLine();
-                if (input is not null)
-                {
-                    Console.WriteLine($"Bruger input {input}");
-                    _orders.RemoveAll(order => order.Id == input);
-                    PrintOrders();
-                }
-            });
+                Console.WriteLine($"Bruger input {input}");
+                _orders.RemoveAll(order => order.Id == input);
+                PrintOrders();
+            }
         }
     }
 }

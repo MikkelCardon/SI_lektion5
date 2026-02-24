@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using Scalar.AspNetCore;
 using TaxiPublisher.Db;
+using TaxiPublisher.Services;
+
 namespace TaxiPublisher
 {
     public class Program
@@ -24,6 +26,10 @@ namespace TaxiPublisher
             var channel = await connection.CreateChannelAsync();
             await channel.ExchangeDeclareAsync("orders", ExchangeType.Fanout);
             builder.Services.AddSingleton<IChannel>(channel);
+            
+            builder.Services.AddHostedService<ReplyService>();
+
+            
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
