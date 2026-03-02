@@ -15,9 +15,11 @@ namespace TaxiSubscriber
             var factory = new ConnectionFactory() { HostName = "localhost" };
             using var connection = await factory.CreateConnectionAsync();
             using var channel = await connection.CreateChannelAsync();
+            
+            Guid consumerId = Guid.NewGuid();
 
             await channel.ExchangeDeclareAsync(exchange: "orders", type: ExchangeType.Fanout);
-            QueueDeclareOk queueDeclareResult = await channel.QueueDeclareAsync();
+            QueueDeclareOk queueDeclareResult = await channel.QueueDeclareAsync(queue: $"ordersExchangeQueue-{consumerId}");
             string queueName = queueDeclareResult.QueueName;
             await channel.QueueBindAsync(queue: queueName, exchange: "orders", routingKey: string.Empty);
             Console.WriteLine("Venter på order.");
@@ -40,8 +42,9 @@ namespace TaxiSubscriber
 
             await channel.BasicConsumeAsync(queueName, autoAck: true, consumer: consumer);
             
-            var replyQueue = await channel.QueueDeclareAsync("reply-queue", exclusive:false);
-            Guid consumerId = Guid.NewGuid();
+            await channel.ExchangeDeclareAsync(exchange: "reply-exchange", type: ExchangeType.Fanout);
+            var replyQueue = await channel.QueueDeclareAsync(queue: $"replyExchangeQueue-{consumerId}");
+            await channel.QueueBindAsync(queue: $"replyExchangeQueue-{consumerId}", exchange: "reply-exchange", routingKey: string.Empty);
             
             Thread thread = new Thread(async () =>
             {
@@ -77,7 +80,7 @@ namespace TaxiSubscriber
                 return Task.CompletedTask;
             };
 
-            await channel.BasicConsumeAsync(queue: "reply-queue", autoAck: true, consumer: consumer);
+            await channel.BasicConsumeAsync(queue: $"replyExchangeQueue-{consumerId}", autoAck: true, consumer: consumer);
             Console.WriteLine("Listening on 'reply-queue'...");
             //await channel.BasicConsumeAsync(queue: replyQueue.QueueName, autoAck: true, consumer: consumer);
         }

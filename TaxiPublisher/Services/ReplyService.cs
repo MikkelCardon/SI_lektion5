@@ -66,13 +66,12 @@ public class ReplyService : BackgroundService
             }
             
             await _channel.BasicPublishAsync(
-                exchange: string.Empty,
-                routingKey: "reply-queue",
-                mandatory: true,
-                basicProperties: replyProperties,
+                exchange: "reply-exchange",
+                routingKey: string.Empty,
                 body: bytearray
             );
-            Console.WriteLine($"Replied to: {ea.BasicProperties.ReplyTo}");
+            Console.WriteLine("Replied to 'ReplyExchange'");
+            //Console.WriteLine($"Replied to: {ea.BasicProperties.ReplyTo}");
             
         };
 
