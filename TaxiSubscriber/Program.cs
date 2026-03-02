@@ -3,6 +3,7 @@ using RabbitMQ.Client.Events;
 using System.Text;
 using System.Text.Json;
 using TaxiSubscriber.Model;
+using System.Text.Json;
 
 namespace TaxiSubscriber
 {
@@ -39,26 +40,29 @@ namespace TaxiSubscriber
 
             await channel.BasicConsumeAsync(queueName, autoAck: true, consumer: consumer);
             
+            var replyQueue = await channel.QueueDeclareAsync("reply-queue", exclusive:false);
+            Guid consumerId = Guid.NewGuid();
+            
+            Thread thread = new Thread(async () =>
+            {
+                await Reply(channel, consumerId);
+            });
+            thread.Start();
             
             while (true)
             {
                 string? input = Console.ReadLine();
-                await RequestReply(channel, input);
-                
-                Thread.Sleep(100);
+                await RequestReply(channel, input, replyQueue, consumerId);
             }
 
         }
 
-        private static async Task RequestReply(IChannel channel, string input)
+        private static async Task RequestReply(IChannel channel, string input, QueueDeclareOk replyQueue, Guid consumerId)
         {
-            var replyQueue = await channel.QueueDeclareAsync();
-            
-            await Request(channel, input, replyQueue);
-            await Reply(channel, input, replyQueue);
+            await Request(channel, input, replyQueue, consumerId);
         }
 
-        private static async Task Reply(IChannel channel, string input, QueueDeclareOk replyQueue)
+        private static async Task Reply(IChannel channel, Guid consumerId)
         {
             var consumer = new AsyncEventingBasicConsumer(channel);
 
@@ -68,22 +72,24 @@ namespace TaxiSubscriber
                 var message = Encoding.UTF8.GetString(body);
                 Console.WriteLine($"Reply Recieved: {message}");
                 
-                RemoveOrder(message);
+                RemoveOrder(message, consumerId);
 
                 return Task.CompletedTask;
             };
 
-            await channel.BasicConsumeAsync(queue: replyQueue.QueueName, autoAck: true, consumer: consumer);
+            await channel.BasicConsumeAsync(queue: "reply-queue", autoAck: true, consumer: consumer);
+            Console.WriteLine("Listening on 'reply-queue'...");
+            //await channel.BasicConsumeAsync(queue: replyQueue.QueueName, autoAck: true, consumer: consumer);
         }
 
-        private static async Task Request(IChannel channel, string input, QueueDeclareOk replyQueue)
+        private static async Task Request(IChannel channel, string input, QueueDeclareOk replyQueue, Guid consumerId)
         {
             await channel.QueueDeclareAsync("request-queue", exclusive: false);
             
             var properties = new BasicProperties()
             {
                 ReplyTo = replyQueue.QueueName,
-                CorrelationId = Guid.NewGuid().ToString()
+                CorrelationId = consumerId.ToString(),
             };
             
             var message = input;
@@ -106,14 +112,24 @@ namespace TaxiSubscriber
             Console.WriteLine("Vælg en order ved at indtaste id'et");
         }
 
-        private static void RemoveOrder(string input)
+        private static void RemoveOrder(string json, Guid consumerId)
         {
-            if (input is not null)
+            var result = JsonSerializer.Deserialize<JsonElement>(json);
+
+            string resultConsumerId = result.GetProperty("ConsumerId").GetString();
+            string resultOrderId = result.GetProperty("OrderId").GetString();
+
+            if (resultConsumerId == consumerId.ToString())
             {
-                Console.WriteLine($"Forsøger at slette id: {input}");
-                _orders.RemoveAll(order => order.Id == input);
-                PrintOrders();
+                Console.WriteLine($"Order accepted: {resultOrderId}");
             }
+
+            if (resultOrderId is not null)
+            {
+                Console.WriteLine($"Forsøger at slette id: {resultOrderId}");
+                _orders.RemoveAll(order => order.Id == resultOrderId);
+            }
+            PrintOrders();
         }
     }
 }

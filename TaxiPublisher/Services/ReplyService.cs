@@ -4,6 +4,7 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TaxiPublisher.Db;
 using TaxiPublisher.Model;
+using System.Text.Json;
 
 namespace TaxiPublisher.Services;
 
@@ -44,30 +45,34 @@ public class ReplyService : BackgroundService
             var message = Encoding.UTF8.GetString(eabody);
             
             var deleted = await DeleteOrderAsync(context, message);
-            
-            var body = eabody;
+
+            var jsonBody = "";
+            if (deleted)
+            {
+                var body = new {OrderId = message, ConsumerId = ea.BasicProperties.CorrelationId};
+                jsonBody = JsonSerializer.Serialize(body);
+            }
+            else
+            {
+                var body = new {OrderId = "", ConsumerId = ea.BasicProperties.CorrelationId};
+                jsonBody = JsonSerializer.Serialize(body);
+            }
+            var bytearray = Encoding.UTF8.GetBytes(jsonBody);
 
             if (string.IsNullOrEmpty(ea.BasicProperties.ReplyTo))
             {
                 Console.WriteLine("No reply-to property set. Cannot send reply.");
                 return;
             }
-
-            if (deleted)
-            {
-                await _channel.BasicPublishAsync(
-                    exchange: string.Empty,
-                    routingKey: ea.BasicProperties.ReplyTo,
-                    mandatory: true,
-                    basicProperties: replyProperties,
-                    body: body
-                );
-                Console.WriteLine($"Replied to: {ea.BasicProperties.ReplyTo}");
-            }
-            else
-            {
-                Console.WriteLine("Was not deleted.");
-            }
+            
+            await _channel.BasicPublishAsync(
+                exchange: string.Empty,
+                routingKey: "reply-queue",
+                mandatory: true,
+                basicProperties: replyProperties,
+                body: bytearray
+            );
+            Console.WriteLine($"Replied to: {ea.BasicProperties.ReplyTo}");
             
         };
 
