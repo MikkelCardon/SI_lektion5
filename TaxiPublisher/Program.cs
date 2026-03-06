@@ -24,7 +24,7 @@ namespace TaxiPublisher
             var factory = new ConnectionFactory() { HostName = "localhost" };
             var connection = await factory.CreateConnectionAsync();
             var channel = await connection.CreateChannelAsync();
-            await channel.ExchangeDeclareAsync("orders", ExchangeType.Fanout);
+            await channel.ExchangeDeclareAsync("orders", ExchangeType.Topic);
             builder.Services.AddSingleton<IChannel>(channel);
             
             builder.Services.AddHostedService<ReplyService>();

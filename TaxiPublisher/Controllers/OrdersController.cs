@@ -35,12 +35,27 @@ namespace TaxiPublisher.Controllers
             order.Id = _orderId++.ToString();
             _ordersContext.Orders.Add(order);
             _ordersContext.SaveChanges();
+            
             var message = JsonSerializer.Serialize(order);
             var body = System.Text.Encoding.UTF8.GetBytes(message);
+
+            Console.WriteLine($"taxi.{GetRoutingKey(order)}");
+            
             await _channel.BasicPublishAsync(exchange: "orders",
-                                     routingKey: string.Empty,
+                                     routingKey: $"taxi.{GetRoutingKey(order)}",
                                      body: body);
             return Ok();
+        }
+
+        public string GetRoutingKey(Order order)
+        {
+            string routingKey = "";
+
+            routingKey += order.Size is not null ? order.Size.ToString() : "any";
+    
+            routingKey += order.IsElectric ? ".electric" : ".any";
+
+            return routingKey;
         }
 
     }
