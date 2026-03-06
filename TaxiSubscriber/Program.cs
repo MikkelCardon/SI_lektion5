@@ -18,10 +18,15 @@ namespace TaxiSubscriber
             
             Guid consumerId = Guid.NewGuid();
 
-            await channel.ExchangeDeclareAsync(exchange: "orders", type: ExchangeType.Fanout);
+            await channel.ExchangeDeclareAsync(exchange: "orders", type: ExchangeType.Topic);
             QueueDeclareOk queueDeclareResult = await channel.QueueDeclareAsync(queue: $"ordersExchangeQueue-{consumerId}");
             string queueName = queueDeclareResult.QueueName;
-            await channel.QueueBindAsync(queue: queueName, exchange: "orders", routingKey: string.Empty);
+
+            string routingKey = GetRoutingKey();
+
+            Console.WriteLine($"Subscribed to : {routingKey}");
+            
+            await channel.QueueBindAsync(queue: queueName, exchange: "orders", routingKey: routingKey);
             Console.WriteLine("Venter på order.");
 
             var consumer = new AsyncEventingBasicConsumer(channel);
@@ -133,6 +138,27 @@ namespace TaxiSubscriber
                 _orders.RemoveAll(order => order.Id == resultOrderId);
             }
             PrintOrders();
+        }
+        
+        public static string GetRoutingKey()
+        {
+            string routingKey = "taxi.";
+            Console.WriteLine("size (Small, Medium, Large");
+            string size = Console.ReadLine();
+            
+            Console.WriteLine("electric (*/electric");
+            string electric = Console.ReadLine();
+            
+            if (size.Equals("*") && electric.Equals("*"))
+            {
+                routingKey+= "#";
+                return routingKey;
+            }
+
+            routingKey += size;
+            routingKey += "." + electric;
+
+            return routingKey;
         }
     }
 }

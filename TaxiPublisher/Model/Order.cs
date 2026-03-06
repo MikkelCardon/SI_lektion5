@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿
 
 namespace TaxiPublisher.Model
 {
@@ -8,5 +8,15 @@ namespace TaxiPublisher.Model
         public string Destination { get; set; } = string.Empty;
         public bool QuickOrder { get; set; }
         public DateTime? PickUpTime { get; set; }
+        
+        public CarSize? Size{ get; set; }
+        public Boolean IsElectric { get; set; }
+    }
+    
+    public enum CarSize
+    {
+        Small,
+        Medium,
+        Large
     }
 }
